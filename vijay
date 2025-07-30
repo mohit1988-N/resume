@@ -1,0 +1,132 @@
+import React, { useState, useEffect } from "react";
+import { ethers } from "ethers";
+
+const CONTRACT_ADDRESS = "0xYourContractAddressHere"; // Replace with your contract address
+const CONTRACT_ABI = [
+  "function addResume(address user, string memory resumeHash) public",
+  "function getResume(address user) public view returns (string memory)",
+];
+
+export default function App() {
+  const [account, setAccount] = useState(null);
+  const [resumeHash, setResumeHash] = useState("");
+  const [storedResume, setStoredResume] = useState("");
+  const [contract, setContract] = useState(null);
+
+  // Connect MetaMask wallet & setup contract
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert("MetaMask not detected. Please install MetaMask.");
+      return;
+    }
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      const resumeContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+      setAccount(userAddress);
+      setContract(resumeContract);
+    } catch (error) {
+      alert("Failed to connect wallet.");
+      console.error(error);
+    }
+  }
+
+  // Submit resume hash to blockchain
+  async function submitResume() {
+    if (!contract) {
+      alert("Please connect your wallet first.");
+      return;
+    }
+    if (!resumeHash.trim()) {
+      alert("Please enter a valid resume hash.");
+      return;
+    }
+    try {
+      const tx = await contract.addResume(account, resumeHash.trim());
+      await tx.wait();
+      alert("Resume submitted successfully!");
+      fetchResume();
+    } catch (error) {
+      alert("Transaction failed.");
+      console.error(error);
+    }
+  }
+
+  // Fetch stored resume hash from blockchain
+  async function fetchResume() {
+    if (!contract || !account) return;
+    try {
+      const data = await contract.getResume(account);
+      setStoredResume(data);
+    } catch (error) {
+      alert("Failed to fetch resume from blockchain.");
+      setStoredResume("");
+      console.error(error);
+    }
+  }
+
+  // Auto-fetch resume when wallet & contract ready
+  useEffect(() => {
+    if (contract && account) fetchResume();
+  }, [contract, account]);
+
+  return (
+    <div style={{ maxWidth: 600, margin: "2rem auto", fontFamily: "Arial, sans-serif" }}>
+      <h1>Decentralized Resume Verification</h1>
+
+      {!account ? (
+        <button onClick={connectWallet} style={{ padding: "12px 24px", fontSize: 18, cursor: "pointer" }}>
+          Connect Wallet
+        </button>
+      ) : (
+        <>
+          <p><strong>Connected Wallet:</strong> {account}</p>
+
+          <label htmlFor="resumeHash">
+            <strong>Resume/Skill Hash (e.g., IPFS CID):</strong>
+          </label>
+          <input
+            id="resumeHash"
+            type="text"
+            value={resumeHash}
+            onChange={(e) => setResumeHash(e.target.value)}
+            placeholder="Enter resume hash here"
+            style={{ width: "100%", padding: 10, fontSize: 16, marginTop: 8 }}
+          />
+          <button
+            onClick={submitResume}
+            style={{ marginTop: 15, padding: "12px 24px", fontSize: 18, cursor: "pointer" }}
+          >
+            Submit Resume
+          </button>
+
+          <div style={{ marginTop: 40 }}>
+            <h3>Your Stored Resume Hash:</h3>
+            <div
+              style={{
+                backgroundColor: "#f4f4f4",
+                padding: 15,
+                fontSize: 16,
+                wordBreak: "break-word",
+                minHeight: 50,
+                borderRadius: 4,
+              }}
+            >
+              {storedResume || "No resume stored on blockchain."}
+            </div>
+            <button
+              onClick={fetchResume}
+              style={{ marginTop: 10, padding: "8px 16px", cursor: "pointer" }}
+            >
+              Refresh
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
